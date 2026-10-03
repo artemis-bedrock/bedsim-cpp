@@ -496,6 +496,29 @@ TEST(PortLiquidHardening, CheckUpstreamImpulseClampingOptIn) {
 	}
 }
 
+TEST(PortLiquidHardening, CheckSneakSlowdownDoesNotApplyInWater) {
+	const FakeWorld world;
+	const auto options = liquidOptions();
+	Scratch scratch;
+	const systems::Systems<FakeWorld> systems{ world, options, scratch };
+	const Input crouchForward{ .moveVector = { 0.0f, 1.0f }, .sprintDown = true, .sneakDown = true, .sneaking = true };
+	const Input crouchDiagonal{ .moveVector = { 0.707f, 0.707f }, .sprintDown = true, .sneakDown = true, .sneaking = true };
+
+	auto submerged = baseBody();
+	submerged.swimWaterContact = true;
+	std::ignore = systems.inputs.apply(submerged, crouchForward);
+	EXPECT_TRUE(approxEqual(submerged.impulse.y, 0.98f)) << "crouching in water keeps the full forward impulse";
+	EXPECT_EQ(submerged.ticksSinceCanSlowdown, 0) << "no slowdown ticks accumulate in water";
+
+	submerged.swimWaterContact = true;
+	std::ignore = systems.inputs.apply(submerged, crouchDiagonal);
+	EXPECT_TRUE(approxEqual(submerged.impulse.x, 0.707f * 0.98f) && approxEqual(submerged.impulse.y, 0.707f * 0.98f)) << "crouching in water keeps the full diagonal impulse";
+
+	auto dry = baseBody();
+	std::ignore = systems.inputs.apply(dry, crouchForward);
+	EXPECT_TRUE(approxEqual(dry.impulse.y, kMaxSneakImpulse * 0.98f)) << "crouching on land still clamps to the sneak impulse";
+}
+
 TEST(PortLiquidHardening, CheckUpstreamImpulseClampingStillBoundsMoveVector) {
 	const FakeWorld world;
 	auto options = liquidOptions();

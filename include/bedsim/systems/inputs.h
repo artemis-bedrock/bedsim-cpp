@@ -226,7 +226,8 @@ namespace bedsim::systems {
 					maxImpulse *= kMaxConsumingImpulse;
 				}
 
-				if (body.sneaking || body.crawling || body.gliding) {
+				const bool sneakSlowdown = body.sneaking && !body.swimWaterContact;
+				if (sneakSlowdown || body.crawling || body.gliding) {
 					++body.ticksSinceCanSlowdown;
 					float sneakImpulse = kMaxSneakImpulse;
 					if (body.ticksSinceCanSlowdown > 2 && mContext.hasEquipment()) {
