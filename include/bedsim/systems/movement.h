@@ -264,10 +264,10 @@ namespace bedsim::systems {
 						body.glideBoostTicks = 0;
 					}
 
-					return mLiquids.applyFlow(body, scratch.water, LiquidKind::Water) && mLiquids.travel(body, LiquidKind::Water, inWater);
+					return mLiquids.applyFlow(body, scratch.water, LiquidKind::Water) && mLiquids.travel(body, LiquidKind::Water);
 				}
 
-				return mLiquids.applyFlow(body, scratch.lava, LiquidKind::Lava) && mLiquids.travel(body, LiquidKind::Lava, true);
+				return mLiquids.applyFlow(body, scratch.lava, LiquidKind::Lava) && mLiquids.travel(body, LiquidKind::Lava);
 			}
 
 			const auto under = mContext.movement(blockAt(body.position - Vec3{ 0.0f, 0.5f, 0.0f }));
@@ -332,15 +332,7 @@ namespace bedsim::systems {
 				mContext.debug("added climb velocity: {} (collided={} effectiveJumping={})", climb, body.collideX || body.collideZ, body.effectiveJumping);
 			}
 
-			const bool inCobweb = mBlocks.insideCobweb(body);
-			if (inCobweb) {
-				const bool weaving = mContext.effectAmplifier(Effect::Weaving).has_value();
-				const float horizontal = weaving ? 0.5f : 0.25f;
-				const float vertical = weaving ? 0.25f : 0.05f;
-				body.setVelocity(body.velocity * Vec3{ horizontal, vertical, horizontal });
-				mContext.debug("web force applied (vel={})", body.velocity);
-			}
-
+			const bool inCobweb = applyCobwebSlowdown(body);
 			const bool stuck = applyStuckSpeedMultiplier(body);
 			if (!mCollision.movementSweepLoaded(body) || !mCollision.avoidEdge(body)) {
 				return false;
@@ -399,6 +391,7 @@ namespace bedsim::systems {
 		[[nodiscard]] bool glide(Body& body) const {
 			body.onGround = false;
 			simulateGlide(body);
+			const bool inCobweb = applyCobwebSlowdown(body);
 			const bool stuck = applyStuckSpeedMultiplier(body);
 			if (!mCollision.movementSweepLoaded(body)) {
 				return false;
@@ -413,12 +406,29 @@ namespace bedsim::systems {
 			updateFallDistance(body, previousY);
 			mContext.debug("(glide) oldVel={}, collisions={} diff={}", previousVelocity, body.velocity, body.velocity - body.client.velocity);
 			body.setMovement(body.velocity);
-			if (stuck) {
+			if (inCobweb) {
+				mContext.debug("post-move cobweb force applied (0 vel)");
+			}
+
+			if (stuck || inCobweb) {
 				body.setVelocity({});
 			}
 
 			mBlocks.applyInsideBlockEffects(body);
 			mLiquids.applyBubbleColumns(body);
+			return true;
+		}
+
+		[[nodiscard]] bool applyCobwebSlowdown(Body& body) const {
+			if (!mBlocks.insideCobweb(body)) {
+				return false;
+			}
+
+			const bool weaving = mContext.effectAmplifier(Effect::Weaving).has_value();
+			const float horizontal = weaving ? 0.5f : 0.25f;
+			const float vertical = weaving ? 0.25f : 0.05f;
+			body.setVelocity(body.velocity * Vec3{ horizontal, vertical, horizontal });
+			mContext.debug("web force applied (vel={})", body.velocity);
 			return true;
 		}
 
