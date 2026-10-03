@@ -97,7 +97,7 @@ namespace bedsim::systems {
 			return true;
 		}
 
-		[[nodiscard]] bool travel(Body& body, const LiquidKind kind, const bool touchingLiquid) const {
+		[[nodiscard]] bool travel(Body& body, const LiquidKind kind) const {
 			const float initialY = body.position.y;
 			const bool water = kind == LiquidKind::Water;
 			const bool jumping = body.effectiveJumping;
@@ -110,8 +110,18 @@ namespace bedsim::systems {
 			}
 
 			if (jumping) {
+				bool surfaceSwimming = false;
+				if (water && body.swimming) {
+					const auto head = observeHead(body);
+					if (!head.known) {
+						return false;
+					}
+
+					surfaceSwimming = !head.water;
+				}
+
 				auto velocity = body.velocity;
-				if ((body.swimAmount > 0.0f && body.swimAmount < 1.0f) || (water && body.swimming && !touchingLiquid)) {
+				if ((body.swimAmount > 0.0f && body.swimAmount < 1.0f) || surfaceSwimming) {
 					velocity.y = 0.0f;
 				} else {
 					velocity.y += 0.04f;
