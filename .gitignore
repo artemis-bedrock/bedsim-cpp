@@ -1,0 +1,6 @@
+build/
+.cache/
+.idea/
+cmake-build-*/
+CMakePresets.json
+.clang-format
