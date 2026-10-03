@@ -397,7 +397,8 @@ namespace bedsim {
 			velocity.z += (lookZ / lookHorizontal * horizontalSpeed - velocity.z) * 0.1f;
 		}
 
-		if (body.glideBoostTicks > 0) {
+		const int rockets = body.attachedRockets > 0 ? body.attachedRockets : (body.glideBoostTicks > 0 ? 1 : 0);
+		for (int rocket = 0; rocket < rockets; ++rocket) {
 			velocity.x += (lookX * 0.1f) + (((lookX * 1.5f) - velocity.x) * 0.5f);
 			velocity.y += (lookY * 0.1f) + (((lookY * 1.5f) - velocity.y) * 0.5f);
 			velocity.z += (lookZ * 0.1f) + (((lookZ * 1.5f) - velocity.z) * 0.5f);

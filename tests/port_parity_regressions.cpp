@@ -2,6 +2,7 @@
 #include "fake_world.h"
 
 #include "bedsim/constants.h"
+#include "bedsim/physics.h"
 #include "bedsim/simulator.h"
 
 #include <array>
@@ -463,6 +464,50 @@ TEST(PortParityRegressions, CheckGlideNearVerticalPitchDoesNotExplode) {
 		const float value = body.velocity[axis];
 		EXPECT_TRUE(std::isfinite(value) && std::abs(value) <= 10.0f) << std::format("TestGlideNearVerticalPitchDoesNotExplode: velocity axis {} = {}", axis, value);
 	}
+}
+
+TEST(PortParityRegressions, CheckAttachedRocketBoostsGlideLikeClient) {
+	// Client capture: elytra glide with one firework rocket attached, tick 243 -> 244.
+	const Vec3 start{ 1.30190f, 0.22831f, 0.99137f };
+	const Vec3 client{ 1.32377f, 0.20555f, 0.97299f };
+	const Vec3 rotation{ -6.37f, -54.5f, -54.5f };
+
+	auto boosted = baseBody();
+	boosted.gliding = true;
+	boosted.gravity = kGravity;
+	boosted.setRotation(rotation);
+	boosted.velocity = start;
+	boosted.attachedRockets = 1;
+	simulateGlide(boosted);
+	EXPECT_TRUE(length(boosted.velocity - client) < 2e-3f) << std::format("TestAttachedRocketBoostsGlideLikeClient: boosted glide {} want {}", boosted.velocity, client);
+
+	auto plain = baseBody();
+	plain.gliding = true;
+	plain.gravity = kGravity;
+	plain.setRotation(rotation);
+	plain.velocity = start;
+	simulateGlide(plain);
+	EXPECT_TRUE(length(plain.velocity - client) > 2e-2f) << std::format("TestAttachedRocketBoostsGlideLikeClient: plain glide {} must miss the client", plain.velocity);
+}
+
+TEST(PortParityRegressions, CheckEachAttachedRocketBoostsOnce) {
+	auto single = baseBody();
+	single.gliding = true;
+	single.gravity = kGravity;
+	single.setRotation({ -6.37f, -54.5f, -54.5f });
+	single.velocity = {};
+	single.attachedRockets = 1;
+	auto twice = single;
+	twice.attachedRockets = 2;
+	auto countdown = single;
+	countdown.attachedRockets = 0;
+	countdown.glideBoostTicks = 5;
+
+	simulateGlide(single);
+	simulateGlide(twice);
+	simulateGlide(countdown);
+	EXPECT_TRUE(countdown.velocity == single.velocity) << "TestEachAttachedRocketBoostsOnce: the boost countdown matches one rocket";
+	EXPECT_TRUE(length(twice.velocity) > length(single.velocity) + 0.1f) << std::format("TestEachAttachedRocketBoostsOnce: two rockets {} boost beyond one {}", twice.velocity, single.velocity);
 }
 
 TEST(PortParityRegressions, CheckShallowLiquidBelowPlayerIsNotContact) {
@@ -937,4 +982,38 @@ TEST(PortParityRegressions, CheckCollisionPresenceFiltersInvalidBoxes) {
 	const systems::Systems<ListWorld> systems{ world, options, scratch };
 	const auto body = baseBody();
 	EXPECT_TRUE(!systems.collision.hasNearbyBoxes(body, body.boundingBox(false))) << "TestCollisionPresenceFiltersInvalidBoxes: a zero-volume collision box is not present";
+}
+
+TEST(PortParityRegressions, CheckStopGlidingTickUsesTheFullMoveInput) {
+	FakeWorld world;
+	world.floor(15, 4);
+	const Input input{
+		.moveVector = { 0.707f, 0.707f },
+		.moveVectorIsRaw = true,
+		.yaw = -179.11f,
+		.headYaw = -179.11f,
+		.sprintDown = true,
+		.stopGliding = true
+	};
+
+	const auto landedBody = [] {
+		auto body = baseBody();
+		body.position = { 16.347792f, 16.0f, 11.307272f };
+		body.velocity = { 0.042298675f, -0.09897518f, -0.13782816f };
+		body.onGround = true;
+		body.sprinting = true;
+		body.movementSpeed = 0.20995f;
+		body.hasGravity = true;
+		return body;
+	};
+
+	auto stopping = landedBody();
+	stopping.gliding = true;
+	Simulator{ world }.simulate(stopping, input);
+
+	auto grounded = landedBody();
+	Simulator{ world }.simulate(grounded, input);
+
+	EXPECT_TRUE(!stopping.gliding) << "TestStopGlidingTickUsesTheFullMoveInput: the stop-gliding input clears the glide";
+	EXPECT_TRUE(stopping.position == grounded.position && stopping.velocity == grounded.velocity) << "TestStopGlidingTickUsesTheFullMoveInput: the stop-gliding tick accelerates like an ordinary ground tick instead of clamping the move input";
 }

@@ -94,6 +94,12 @@ namespace bedsim::systems {
 			body.wantDown = input.wantDown;
 			body.wantDownSlow = input.wantDownSlow;
 
+			if (input.stopGliding) {
+				body.gliding = false;
+			} else if (input.startGliding) {
+				body.gliding = true;
+			}
+
 			const auto move = processMove(body, input, options.upstreamImpulseClamping);
 
 			body.jumping = input.startJumping;
@@ -113,12 +119,6 @@ namespace bedsim::systems {
 			}
 
 			body.slowFalling = mContext.effectAmplifier(Effect::SlowFalling).has_value();
-
-			if (input.stopGliding) {
-				body.gliding = false;
-			} else if (input.startGliding) {
-				body.gliding = true;
-			}
 
 			body.startingSpinAttack = input.startSpinAttack || (body.riptideReady && body.startingSpinAttack);
 			if (input.stopSpinAttack && body.riptideTicks > 0 && body.riptideCollision) {

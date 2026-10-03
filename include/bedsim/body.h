@@ -115,6 +115,7 @@ namespace bedsim {
 
 		bool gliding{};
 		int64_t glideBoostTicks{};
+		int attachedRockets{};
 
 		bool hasGravity{ true };
 		bool slowFalling{};
