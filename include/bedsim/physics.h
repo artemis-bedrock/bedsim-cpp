@@ -8,6 +8,7 @@
 #include "bedsim/vec.h"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -97,9 +98,9 @@ namespace bedsim {
 	[[nodiscard]] bool applyClimbJump(Body& body, const ClimberFlags& flags);
 	void applyLadderTravel(Body& body, const ClimberFlags& flags);
 	[[nodiscard]] bool honeySlideResetsFallDistance(const Body& body, const BlockPos& position);
-	void walkOnBlock(Body& body, const BlockMovement& under);
-	void landOnBlock(Body& body, const Vec3& previousVelocity, const BlockMovement& under);
-	void setPostCollisionMotion(Body& body, const Vec3& previousVelocity, bool previousOnGround, const BlockMovement& under);
+	[[nodiscard]] float restitution(const Body& body, float impactY, const std::optional<BlockMovement>& landedOn);
+	void setPostCollisionMotion(Body& body, const Vec3& previousVelocity, const std::optional<BlockMovement>& landedOn);
+	[[nodiscard]] float dampHorizontal(float value, float drag);
 
 	void setSwimmingPoseFlags(Body& body);
 	void applyLegacySprint(Body& body, const Input& input);

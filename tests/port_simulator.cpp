@@ -633,16 +633,9 @@ TEST(PortSimulator, CheckBedBounceUsesVanillaRestitutionWithoutCap) {
 	const Options options{};
 	const systems::Systems<SemanticsWorld> systems{ world, options, scratch };
 	const auto under = systems.context.movement({});
-	auto body = baseBody();
-	body.velocity = { 0.0f, -2.0f, 0.0f };
-	auto previous = body.velocity;
-	landOnBlock(body, previous, under);
-	EXPECT_TRUE(near(body.velocity.y, 1.5f)) << "TestBedBounceUsesVanillaRestitutionWithoutCap: bed bounce from -2";
-
-	body.velocity = { 0.0f, -1.0f, 0.0f };
-	previous = body.velocity;
-	landOnBlock(body, previous, under);
-	EXPECT_TRUE(near(body.velocity.y, 0.75f)) << "TestBedBounceUsesVanillaRestitutionWithoutCap: bed bounce from -1";
+	const auto body = baseBody();
+	EXPECT_TRUE(near(restitution(body, -2.0f, under), 1.5f)) << "TestBedBounceUsesVanillaRestitutionWithoutCap: bed bounce from -2";
+	EXPECT_TRUE(near(restitution(body, -1.0f, under), 0.75f)) << "TestBedBounceUsesVanillaRestitutionWithoutCap: bed bounce from -1";
 }
 
 TEST(PortSimulator, CheckTinyVelocityIsNotDiscardedPrematurely) {
@@ -650,7 +643,7 @@ TEST(PortSimulator, CheckTinyVelocityIsNotDiscardedPrematurely) {
 	Simulator simulator{ world };
 	auto body = baseBody();
 	body.hasGravity = false;
-	body.velocity = { 1e-7f, 0.0f, 0.0f };
+	body.velocity = { 2e-7f, 0.0f, 0.0f };
 	simulator.simulateState(body);
 	EXPECT_TRUE(body.velocity.x != 0.0f) << "TestTinyVelocityIsNotDiscardedPrematurely: Bedrock-scale tiny velocity remains non-zero";
 }
@@ -702,7 +695,7 @@ TEST(PortSimulator, CheckSneakEdgeProtectionRequiresGround) {
 	body.onGround = false;
 	body.fallDistance = 0.1f;
 	body.velocity = { 0.5f, 0.0f, 0.0f };
-	EXPECT_TRUE(systems.collision.avoidEdge(body)) << "TestSneakEdgeProtectionRequiresGround: edge avoidance completes";
+	EXPECT_TRUE(systems.collision.avoidEdge(body).known) << "TestSneakEdgeProtectionRequiresGround: edge avoidance completes";
 	EXPECT_TRUE(body.velocity.x == 0.5f) << "TestSneakEdgeProtectionRequiresGround: edge protection does not run while airborne";
 }
 

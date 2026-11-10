@@ -39,7 +39,8 @@ namespace bedsim {
 			.climbable = std::ranges::contains(kClimbable, name),
 			.cobweb = name == "minecraft:web",
 			.honey = name == "minecraft:honey_block",
-			.fenceLike = isFenceLike(name)
+			.fenceLike = isFenceLike(name),
+			.carpet = name == "minecraft:carpet" || name.ends_with("_carpet")
 		};
 
 		if (const auto rule = std::ranges::find(kFrictionRules, name, &FrictionRule::name); rule != kFrictionRules.end()) {

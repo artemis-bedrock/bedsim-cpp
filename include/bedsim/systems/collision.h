@@ -12,6 +12,12 @@
 #include <vector>
 
 namespace bedsim::systems {
+	struct EdgeClip {
+		Vec3 retained{};
+		bool clipped{};
+		bool known{ true };
+	};
+
 	struct Fit {
 		bool fits{};
 		bool known{};
@@ -199,10 +205,10 @@ namespace bedsim::systems {
 			body.setPosition(end);
 			body.rememberCollisionBox(box, useSlideOffset);
 
-			const bool collidedY = std::abs(velocity.y - collided.y) >= 1e-5f;
-			body.collideX = std::abs(velocity.x - collided.x) >= 1e-5f;
+			const bool collidedY = std::abs(velocity.y - collided.y) > kFloatEpsilon;
+			body.collideX = std::abs(velocity.x - collided.x) > kFloatEpsilon;
 			body.collideY = collidedY;
-			body.collideZ = std::abs(velocity.z - collided.z) >= 1e-5f;
+			body.collideZ = std::abs(velocity.z - collided.z) > kFloatEpsilon;
 			body.onGround = (collidedY && velocity.y < 0.0f) || (body.onGround && !collidedY && velocity.y == 0.0f);
 			if (!checkSupportingBlock(body, velocity)) {
 				return false;
@@ -216,10 +222,10 @@ namespace bedsim::systems {
 			return true;
 		}
 
-		[[nodiscard]] bool avoidEdge(Body& body) const {
-			if (!body.sneaking || !body.onGround || body.velocity.y > 0.0f) {
-				mContext.debug("avoidEdge: conditions not met (sneaking={} onGround={} yVel={})", body.sneaking, body.onGround, body.velocity.y);
-				return true;
+		[[nodiscard]] EdgeClip avoidEdge(Body& body) const {
+			if (!body.sneaking || !body.onGround) {
+				mContext.debug("avoidEdge: conditions not met (sneaking={} onGround={})", body.sneaking, body.onGround);
+				return { .retained = body.velocity };
 			}
 
 			constexpr float edgeBoundary = 0.025f;
@@ -230,7 +236,7 @@ namespace bedsim::systems {
 			float x = body.velocity.x;
 			float z = body.velocity.z;
 			if (!mContext.areaLoaded(box.extend({ x, drop, z }))) {
-				return false;
+				return { .retained = body.velocity, .known = false };
 			}
 
 			int iteration = 0;
@@ -260,9 +266,18 @@ namespace bedsim::systems {
 				z = 0.0f;
 			}
 
+			auto retained = previous;
+			if (std::abs(x) <= kFloatEpsilon) {
+				retained.x = 0.0f;
+			}
+
+			if (std::abs(z) <= kFloatEpsilon) {
+				retained.z = 0.0f;
+			}
+
 			body.setVelocity({ x, body.velocity.y, z });
 			mContext.debug("(avoidEdge): oldVel={} newVel={}", previous, body.velocity);
-			return true;
+			return { .retained = retained, .clipped = true };
 		}
 
 	private:

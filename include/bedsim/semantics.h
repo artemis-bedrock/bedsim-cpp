@@ -36,6 +36,7 @@ namespace bedsim {
 		bool cobweb{};
 		bool honey{};
 		bool fenceLike{};
+		bool carpet{};
 		bool soulSpeedNeutralizesFriction{};
 
 		[[nodiscard]] BlockMovement validated(const BlockMovement& fallback) const {

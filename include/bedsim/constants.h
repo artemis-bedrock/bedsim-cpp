@@ -11,6 +11,10 @@ namespace bedsim {
 	inline constexpr float kSlowFallingGravity = 0.01f;
 	inline constexpr float kLevitationSpeed = 0.05f;
 	inline constexpr float kStepHeight = 0.5625f;
+	inline constexpr float kFloatEpsilon = 1.1920929e-7f;
+	inline constexpr float kMinRestitutionSpeed = 0.08000011742115021f;
+	inline constexpr float kGroundFrictionProbeOffset = -0.1f;
+	inline constexpr float kStandingOnProbeOffset = -0.2f;
 	inline constexpr float kSlideOffsetMultiplier = 0.4f;
 	inline constexpr float kSlimeBounce = -1.0f;
 	inline constexpr float kBedBounce = -0.75f;

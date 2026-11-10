@@ -666,15 +666,6 @@ TEST(PortCollision, CheckHoneyTopContactPreservesFallDistance) {
 	checkHoneySlideFallDistance({ 0.5f, 0.0f, 0.5f }, 4.0f, "TestHoneyTopContactPreservesFallDistance: top contact keeps fall distance");
 }
 
-TEST(PortCollision, CheckHoneyWalkSlowdownMatchesSlime) {
-	auto body = baseBody();
-	body.onGround = true;
-	body.velocity = { 1.0f, 0.05f, 1.0f };
-
-	walkOnBlock(body, vanillaMovement("minecraft:honey_block"));
-	EXPECT_TRUE(near(body.velocity.x, 0.41f) && near(body.velocity.z, 0.41f)) << "TestHoneyWalkSlowdownMatchesSlime: honey walk slowdown";
-}
-
 TEST(PortCollision, CheckSimulationAppliesScaffoldingTraversal) {
 	FakeWorld world;
 	world.passable({ 0, 0, 0 }, "minecraft:scaffolding");

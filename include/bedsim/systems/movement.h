@@ -271,7 +271,7 @@ namespace bedsim::systems {
 				return mLiquids.applyFlow(body, scratch.lava, LiquidKind::Lava) && mLiquids.travel(body, LiquidKind::Lava);
 			}
 
-			const auto under = mContext.movement(blockAt(body.position - Vec3{ 0.0f, 0.5f, 0.0f }));
+			const auto under = mBlocks.groundFriction(body);
 			float friction = kAirFriction;
 			float speed = body.airSpeed;
 			if (body.onGround) {
@@ -332,12 +332,16 @@ namespace bedsim::systems {
 
 			const bool inCobweb = applyCobwebSlowdown(body);
 			const bool stuck = applyStuckSpeedMultiplier(body);
-			if (!mCollision.movementSweepLoaded(body) || !mCollision.avoidEdge(body)) {
+			if (!mCollision.movementSweepLoaded(body)) {
+				return false;
+			}
+
+			const auto edge = mCollision.avoidEdge(body);
+			if (!edge.known) {
 				return false;
 			}
 
 			auto previousVelocity = body.velocity;
-			const bool previousOnGround = body.onGround;
 			const float previousY = body.position.y;
 			if (!mCollision.tryCollisions(body) || !mPoses.stopRiptideOnBlockCollision(body)) {
 				return false;
@@ -348,20 +352,19 @@ namespace bedsim::systems {
 				body.fallDistance = 0.0f;
 			}
 
-			const auto blockUnder = mBlocks.blockUnderAfterMove(body);
-			if (previousY == body.position.y) {
-				walkOnBlock(body, blockUnder);
-			} else {
-				mContext.debug("walkOnBlock: y changed, skipping block walk effects");
+			const auto landedOn = mBlocks.landingBlock(mContext.boundingBox(body), mContext.scratch().boxes);
+			body.setMovement(body.velocity);
+			if (edge.clipped) {
+				body.velocity.x = edge.retained.x;
+				body.velocity.z = edge.retained.z;
 			}
 
-			body.setMovement(body.velocity);
 			if (stuck) {
 				body.setVelocity({});
 				previousVelocity = {};
 			}
 
-			setPostCollisionMotion(body, previousVelocity, previousOnGround, blockUnder);
+			setPostCollisionMotion(body, previousVelocity, landedOn);
 			const bool autoClimb = applyAutoClimb(body);
 			if (inCobweb) {
 				mContext.debug("post-move cobweb force applied (0 vel)");
@@ -383,9 +386,10 @@ namespace bedsim::systems {
 				}
 			}
 
-			next.x *= friction;
-			next.z *= friction;
+			next.x = dampHorizontal(next.x, friction);
+			next.z = dampHorizontal(next.z, friction);
 			body.setVelocity(next);
+			mBlocks.applyStandOnDamping(body);
 			mBlocks.applyInsideBlockEffects(body);
 			mLiquids.applyBubbleColumns(body);
 			return true;
@@ -459,9 +463,7 @@ namespace bedsim::systems {
 			}
 
 			float jumpHeight = body.jumpHeight;
-			const bool honeyInside = mContext.movement(blockAt(body.position)).honey;
-			const bool honeyBelow = mContext.movement(blockAt(body.position - Vec3{ 0.0f, 0.1f, 0.0f })).honey;
-			if (honeyInside || honeyBelow) {
+			if (mBlocks.jumpFactorBlockHoney(body)) {
 				jumpHeight *= kHoneyJumpMultiplier;
 			}
 

@@ -152,7 +152,6 @@ namespace bedsim::systems {
 			}
 
 			auto previousVelocity = body.velocity;
-			const bool previousOnGround = body.onGround;
 			if (!mCollision.tryCollisions(body)) {
 				return false;
 			}
@@ -167,7 +166,7 @@ namespace bedsim::systems {
 				previousVelocity = {};
 			}
 
-			setPostCollisionMotion(body, previousVelocity, previousOnGround, BlockMovement{ .air = true });
+			setPostCollisionMotion(body, previousVelocity, std::nullopt);
 			if (!stuck) {
 				body.setMovement(body.velocity);
 			}

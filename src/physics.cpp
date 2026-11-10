@@ -518,57 +518,29 @@ namespace bedsim {
 		return std::abs(centerX - body.position.x) > radius || std::abs(centerZ - body.position.z) > radius;
 	}
 
-	void walkOnBlock(Body& body, const BlockMovement& under) {
-		if (!body.onGround || body.sneaking) {
-			return;
+	float restitution(const Body& body, const float impactY, const std::optional<BlockMovement>& landedOn) {
+		if (body.sneaking || impactY >= 0.0f || std::abs(impactY) < kMinRestitutionSpeed || !landedOn || landedOn->honey) {
+			return 0.0f;
 		}
 
-		auto velocity = body.velocity;
-		if (under.bounce == Bounce::Slime || under.honey) {
-			const float vertical = std::abs(velocity.y);
-			if (vertical < 0.1f && !body.pressingSneak) {
-				const float factor = 0.4f + vertical * 0.2f;
-				velocity.x *= factor;
-				velocity.z *= factor;
-			}
+		float bounciness = 0.0f;
+		if (landedOn->bounce == Bounce::Slime) {
+			bounciness = -kSlimeBounce;
+		} else if (landedOn->bounce == Bounce::Bed) {
+			bounciness = -kBedBounce;
 		}
 
-		body.setVelocity(velocity);
+		return std::max(bounciness * -impactY, 0.0f);
 	}
 
-	void landOnBlock(Body& body, const Vec3& previousVelocity, const BlockMovement& under) {
-		auto velocity = body.velocity;
-		if (previousVelocity.y >= 0.0f || body.pressingSneak) {
-			velocity.y = 0.0f;
-			body.setVelocity(velocity);
-			return;
-		}
-
-		switch (under.bounce) {
-		case Bounce::Slime:
-			velocity.y = kSlimeBounce * previousVelocity.y;
-			if (std::abs(velocity.y) < 1e-4f) {
-				velocity.y = 0.0f;
-			}
-			break;
-		case Bounce::Bed:
-			velocity.y = kBedBounce * previousVelocity.y;
-			break;
-		case Bounce::None:
-		default:
-			velocity.y = 0.0f;
-			break;
-		}
-
-		body.setVelocity(velocity);
+	float dampHorizontal(const float value, const float drag) {
+		return std::abs(value) <= kFloatEpsilon ? 0.0f : value * drag;
 	}
 
-	void setPostCollisionMotion(Body& body, const Vec3& previousVelocity, const bool previousOnGround, const BlockMovement& under) {
-		if (!previousOnGround && body.collideY) {
-			landOnBlock(body, previousVelocity, under);
-		} else if (body.collideY) {
+	void setPostCollisionMotion(Body& body, const Vec3& previousVelocity, const std::optional<BlockMovement>& landedOn) {
+		if (body.collideY) {
 			auto velocity = body.velocity;
-			velocity.y = 0.0f;
+			velocity.y = restitution(body, previousVelocity.y, landedOn);
 			body.setVelocity(velocity);
 		}
 
