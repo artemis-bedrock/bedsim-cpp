@@ -330,7 +330,6 @@ namespace bedsim::systems {
 			const bool scaffoldDescend = body.descendThroughBlock && (climber->inScaffolding || climber->overScaffolding);
 			const bool resetsFallDistance = body.descendThroughBlock || climber->climbable || climber->inScaffolding || climber->overScaffolding;
 
-			const bool inCobweb = applyCobwebSlowdown(body);
 			const bool stuck = applyStuckSpeedMultiplier(body);
 			if (!mCollision.movementSweepLoaded(body)) {
 				return false;
@@ -366,11 +365,6 @@ namespace bedsim::systems {
 
 			setPostCollisionMotion(body, previousVelocity, landedOn);
 			const bool autoClimb = applyAutoClimb(body);
-			if (inCobweb) {
-				mContext.debug("post-move cobweb force applied (0 vel)");
-				body.setVelocity({});
-			}
-
 			auto next = body.velocity;
 			if (scaffoldDescend) {
 				if (body.hasGravity) {
@@ -391,14 +385,12 @@ namespace bedsim::systems {
 			body.setVelocity(next);
 			mBlocks.applyStandOnDamping(body);
 			mBlocks.applyInsideBlockEffects(body);
-			mLiquids.applyBubbleColumns(body);
 			return true;
 		}
 
 		[[nodiscard]] bool glide(Body& body) const {
 			body.onGround = false;
 			simulateGlide(body);
-			const bool inCobweb = applyCobwebSlowdown(body);
 			const bool stuck = applyStuckSpeedMultiplier(body);
 			if (!mCollision.movementSweepLoaded(body)) {
 				return false;
@@ -413,16 +405,11 @@ namespace bedsim::systems {
 			updateFallDistance(body, previousY);
 			mContext.debug("(glide) oldVel={}, collisions={} diff={}", previousVelocity, body.velocity, body.velocity - body.client.velocity);
 			body.setMovement(body.velocity);
-			if (inCobweb) {
-				mContext.debug("post-move cobweb force applied (0 vel)");
-			}
-
-			if (stuck || inCobweb) {
+			if (stuck) {
 				body.setVelocity({});
 			}
 
 			mBlocks.applyInsideBlockEffects(body);
-			mLiquids.applyBubbleColumns(body);
 			return true;
 		}
 
@@ -437,19 +424,6 @@ namespace bedsim::systems {
 			}
 
 			body.setVelocity({ body.velocity.x, kClimbSpeed, body.velocity.z });
-			return true;
-		}
-
-		[[nodiscard]] bool applyCobwebSlowdown(Body& body) const {
-			if (!mBlocks.insideCobweb(body)) {
-				return false;
-			}
-
-			const bool weaving = mContext.effectAmplifier(Effect::Weaving).has_value();
-			const float horizontal = weaving ? 0.5f : 0.25f;
-			const float vertical = weaving ? 0.25f : 0.05f;
-			body.setVelocity(body.velocity * Vec3{ horizontal, vertical, horizontal });
-			mContext.debug("web force applied (vel={})", body.velocity);
 			return true;
 		}
 

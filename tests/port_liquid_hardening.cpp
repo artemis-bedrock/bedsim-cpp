@@ -750,7 +750,7 @@ static void applyBubbleColumns(const W& world, Body& body) {
 	const Options options{};
 	Scratch scratch;
 	const systems::Systems<W> systems{ world, options, scratch };
-	systems.liquids.applyBubbleColumns(body);
+	systems.blocks.applyBubbleColumns(body);
 }
 
 TEST(PortLiquidHardening, CheckBubbleColumnSurfaceAcceptsRegistryBackedAir) {

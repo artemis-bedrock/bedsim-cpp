@@ -18,28 +18,13 @@ namespace bedsim::systems {
 		explicit Blocks(const Context<W>& context)
 			: mContext(context) { }
 
-		[[nodiscard]] bool insideCobweb(const Body& body) const {
-			const auto box = mContext.boundingBox(body);
-			const auto area = box.grow(1.0f);
-			const auto minimum = blockAt(area.min);
-			const auto maximum = blockCeiling(area.max);
-			for (int y = minimum.y; y <= maximum.y; ++y) {
-				for (int x = minimum.x; x <= maximum.x; ++x) {
-					for (int z = minimum.z; z <= maximum.z; ++z) {
-						const BlockPos position{ x, y, z };
-						const auto movement = mContext.movement(position);
-						if (movement.air || !box.intersects(AABB::unitAt(position))) {
-							continue;
-						}
+		struct CellRange {
+			BlockPos min{};
+			BlockPos max{};
+		};
 
-						if (movement.cobweb) {
-							return true;
-						}
-					}
-				}
-			}
-
-			return false;
+		[[nodiscard]] static CellRange insideCellRange(const AABB& box) {
+			return { blockAt(box.min + Vec3{ 0.001f }), blockAt(box.max - Vec3{ 0.001f }) };
 		}
 
 		[[nodiscard]] bool climbableContact(const Body& body, const bool insideClimbable) const {
@@ -195,15 +180,60 @@ namespace bedsim::systems {
 		}
 
 		void applyInsideBlockEffects(Body& body) const {
-			const auto box = mContext.boundingBox(body);
-			forEachOverlapped(box, [&](const BlockPos& position) {
+			applyBubbleColumns(body);
+			if (!body.swimWaterContact) {
+				applyHoneyWallSlide(body);
+			}
+
+			bool berry = false;
+			bool powderSnow = false;
+			bool web = false;
+			forEachInside(body, [&](const BlockPos& position) {
 				const auto movement = mContext.movement(position);
-				if (!movement.air) {
-					applyInsideBlockMovement(body, movement.inside);
+				if (movement.air) {
+					return;
 				}
+
+				berry = berry || movement.inside == Inside::SweetBerryBush;
+				powderSnow = powderSnow || movement.inside == Inside::PowderSnow;
+				web = web || movement.cobweb;
 			});
 
-			applyHoneyWallSlide(body);
+			if (powderSnow) {
+				applyInsideBlockMovement(body, Inside::PowderSnow);
+			}
+
+			if (web) {
+				const bool weaving = !berry && !powderSnow && mContext.effectAmplifier(Effect::Weaving).has_value();
+				queueStuckSpeedMultiplier(body, weaving ? Vec3{ 0.5f, 0.25f, 0.5f } : Vec3{ 0.25f, 0.05f, 0.25f });
+			}
+
+			if (berry) {
+				applyInsideBlockMovement(body, Inside::SweetBerryBush);
+			}
+
+			if (berry || powderSnow || web) {
+				body.fallDistance = 0.0f;
+			}
+		}
+
+		void applyBubbleColumns(Body& body) const {
+			if constexpr (HasBubbleColumns<W>) {
+				bool found = false;
+				forEachInside(body, [&](const BlockPos& position) {
+					const auto direction = mContext.world().bubbleColumn(position);
+					if (!direction) {
+						return;
+					}
+
+					found = true;
+					applyBubbleColumn(body, *direction, isBubbleSurface(position));
+				});
+
+				if (found) {
+					body.fallDistance = 0.0f;
+				}
+			}
 		}
 
 	private:
@@ -256,9 +286,19 @@ namespace bedsim::systems {
 			}
 		}
 
+		[[nodiscard]] bool isBubbleSurface(const BlockPos& position) const {
+			if constexpr (HasBubbleColumnSurface<W>) {
+				if (const auto surface = mContext.world().bubbleColumnSurface(position)) {
+					return *surface;
+				}
+			}
+
+			const auto above = position + faceOffset(Face::Up);
+			return !mContext.liquid(above) && mContext.isAir(above);
+		}
+
 		void applyHoneyWallSlide(Body& body) const {
-			const auto box = mContext.boundingBox(body).grow({ 1e-3f, 0.0f, 1e-3f });
-			forEachOverlapped(box, [&](const BlockPos& position) {
+			forEachInside(body, [&](const BlockPos& position) {
 				if (!mContext.movement(position).honey) {
 					return;
 				}
@@ -275,16 +315,12 @@ namespace bedsim::systems {
 		}
 
 		template <typename Fn>
-		static void forEachOverlapped(const AABB& box, Fn&& visit) {
-			const auto minimum = blockAt(box.min);
-			const auto maximum = blockCeiling(box.max);
-			for (int x = minimum.x; x < maximum.x; ++x) {
-				for (int y = minimum.y; y < maximum.y; ++y) {
-					for (int z = minimum.z; z < maximum.z; ++z) {
-						const BlockPos position{ x, y, z };
-						if (box.intersects(AABB::unitAt(position))) {
-							visit(position);
-						}
+		void forEachInside(const Body& body, Fn&& visit) const {
+			const auto range = insideCellRange(mContext.boundingBox(body));
+			for (int x = range.min.x; x <= range.max.x; ++x) {
+				for (int y = range.min.y; y <= range.max.y; ++y) {
+					for (int z = range.min.z; z <= range.max.z; ++z) {
+						visit(BlockPos{ x, y, z });
 					}
 				}
 			}

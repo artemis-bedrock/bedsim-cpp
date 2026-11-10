@@ -629,7 +629,7 @@ TEST(PortCollision, CheckHoneyBlockReducesJumpPower) {
 
 TEST(PortCollision, CheckHoneyWallSlideAppliesOnSolidSideContact) {
 	const SemanticBoxWorld world{
-		.boxes = { AABB{ { 1.0f, -1.0f, 0.0f }, { 2.0f, 2.0f, 1.0f } } },
+		.boxes = { AABB{ { 1.0625f, -1.0f, 0.0625f }, { 1.9375f, 2.0f, 0.9375f } } },
 		.names = { { BlockPos{ 1, 0, 0 }, "minecraft:honey_block" } }
 	};
 
@@ -687,8 +687,117 @@ TEST(PortCollision, CheckSimulationDetectsNonSolidWebAndAppliesWeaving) {
 	body.velocity = { 0.1f, 0.0f, 0.0f };
 	body.hasGravity = false;
 
+	simulator.simulateState(body);
+	EXPECT_TRUE((body.stuckSpeedMultiplier == Vec3{ 0.5f, 0.25f, 0.5f })) << "TestSimulationDetectsNonSolidWebAndAppliesWeaving: Weaving web multiplier";
+	const float want = body.velocity.x * 0.5f;
 	const auto result = simulator.simulateState(body);
-	EXPECT_TRUE(near(result.movement.x, 0.05f)) << "TestSimulationDetectsNonSolidWebAndAppliesWeaving: Weaving web movement";
+	EXPECT_TRUE(near(result.movement.x, want)) << "TestSimulationDetectsNonSolidWebAndAppliesWeaving: Weaving web movement";
+}
+
+TEST(PortCollision, CheckGlidingIntoWebUsesSlowdownMultiplier) {
+	FakeWorld world{ .elytra = true };
+	world.passable({ 0, 0, 0 }, "minecraft:web");
+	Simulator simulator{ world };
+	auto body = baseBody();
+	body.position = { 0.5f, 0.0f, 0.5f };
+	body.gliding = true;
+	body.gravity = kGravity;
+	body.velocity = { 0.0f, 0.0f, 0.5f };
+
+	simulator.simulateState(body);
+	EXPECT_TRUE((body.stuckSpeedMultiplier == Vec3{ 0.25f, 0.05f, 0.25f })) << "TestGlidingIntoWebUsesSlowdownMultiplier: gliding web contact queues the multiplier";
+	EXPECT_TRUE(body.gliding) << "TestGlidingIntoWebUsesSlowdownMultiplier: glide continues";
+	simulator.simulateState(body);
+	EXPECT_TRUE(body.velocity == Vec3{}) << "TestGlidingIntoWebUsesSlowdownMultiplier: web slowdown clears gliding velocity";
+}
+
+TEST(PortCollision, CheckOverlappingSlowdownBlocksUseWeakestAxisNotProduct) {
+	FakeWorld world;
+	world.passable({ 0, 0, 0 }, "minecraft:web");
+	world.passable({ 0, 1, 0 }, "minecraft:sweet_berry_bush");
+	Simulator simulator{ world };
+	auto body = baseBody();
+	body.position = { 0.5f, 0.0f, 0.5f };
+	body.hasGravity = false;
+
+	simulator.simulateState(body);
+	EXPECT_TRUE((body.stuckSpeedMultiplier == Vec3{ 0.25f, 0.05f, 0.25f })) << "TestOverlappingSlowdownBlocksUseWeakestAxisNotProduct: web and berry bush multiplier";
+	body.velocity = { 0.4f, 0.0f, 0.0f };
+	const auto result = simulator.simulateState(body);
+	EXPECT_TRUE(near(result.movement.x, 0.4f * 0.25f)) << "TestOverlappingSlowdownBlocksUseWeakestAxisNotProduct: web and berry bush movement";
+}
+
+TEST(PortCollision, CheckWeavingKeepsWebMultiplierInsideOtherSlowdownBlocks) {
+	FakeWorld world{ .effects = { { Effect::Weaving, 0 } } };
+	world.passable({ 0, 0, 0 }, "minecraft:web");
+	world.passable({ 0, 1, 0 }, "minecraft:powder_snow");
+	SystemsFixture fixture{ world };
+	auto body = baseBody();
+	body.position = { 0.5f, 0.0f, 0.5f };
+
+	fixture.systems.blocks.applyInsideBlockEffects(body);
+	EXPECT_TRUE((body.stuckSpeedMultiplier == Vec3{ 0.25f, 0.05f, 0.25f })) << "TestWeavingKeepsWebMultiplierInsideOtherSlowdownBlocks: Weaving in web and powder snow";
+}
+
+TEST(PortCollision, CheckSlowdownBlockContactResetsFallDistance) {
+	FakeWorld world;
+	world.passable({ 0, 0, 0 }, "minecraft:sweet_berry_bush");
+	SystemsFixture fixture{ world };
+	auto body = baseBody();
+	body.position = { 0.5f, 0.0f, 0.5f };
+	body.fallDistance = 4.0f;
+
+	fixture.systems.blocks.applyInsideBlockEffects(body);
+	EXPECT_TRUE(body.fallDistance == 0.0f) << "TestSlowdownBlockContactResetsFallDistance: berry bush contact resets fall distance";
+}
+
+TEST(PortCollision, CheckHoneyDoesNotSlowEntityInWater) {
+	FakeWorld world;
+	world.passable({ 1, 0, 0 }, "minecraft:honey_block");
+	SystemsFixture fixture{ world };
+	auto body = baseBody();
+	body.position = { 0.75f, 0.0f, 0.5f };
+	body.velocity = { 0.1f, -0.2f, 0.1f };
+	body.swimWaterContact = true;
+
+	fixture.systems.blocks.applyInsideBlockEffects(body);
+	EXPECT_TRUE((body.velocity == Vec3{ 0.1f, -0.2f, 0.1f })) << "TestHoneyDoesNotSlowEntityInWater: honey leaves in-water velocity alone";
+}
+
+TEST(PortCollision, CheckInsideBlocksIgnoreMarginalOverlap) {
+	FakeWorld world;
+	world.set({ 1, 0, 0 }, { .bubble = BubbleDirection::Up });
+	world.passable({ 0, 0, 1 }, "minecraft:honey_block");
+	SystemsFixture fixture{ world };
+	auto body = baseBody();
+	body.position = { 0.7005f, 0.0f, 0.7005f };
+	body.velocity = { 0.1f, -0.2f, 0.1f };
+
+	fixture.systems.blocks.applyInsideBlockEffects(body);
+	EXPECT_TRUE((body.velocity == Vec3{ 0.1f, -0.2f, 0.1f })) << "TestInsideBlocksIgnoreMarginalOverlap: marginal overlap leaves velocity alone";
+}
+
+TEST(PortCollision, CheckBubbleColumnAppliesBeforeHoney) {
+	FakeWorld world;
+	world.set({ 0, -1, 0 }, { .bubble = BubbleDirection::Up });
+	world.passable({ 0, 0, 0 }, "minecraft:honey_block");
+	Simulator simulator{ world };
+	auto body = baseBody();
+	body.position = { 0.5f, 0.0f, 0.5f };
+	body.velocity = { 0.0f, -1.0f, 0.0f };
+	body.hasGravity = false;
+
+	simulator.simulateState(body);
+	EXPECT_TRUE(body.velocity.y == -0.12f) << "TestBubbleColumnAppliesBeforeHoney: bubble column then honey cap";
+}
+
+TEST(PortCollision, CheckInsideCellRangeKeepsFloat32DeflationAtLargeCoordinates) {
+	auto body = baseBody();
+	body.position = { 65535.7f, 0.0f, 0.5f };
+
+	const auto range = systems::Blocks<FakeWorld>::insideCellRange(body.boundingBox(false));
+	EXPECT_TRUE(range.min.x == 65535 && range.max.x == 65536) << "TestInsideCellRangeKeepsFloat32DeflationAtLargeCoordinates: large-coordinate x range";
+	EXPECT_TRUE(range.min.z == 0 && range.max.z == 0) << "TestInsideCellRangeKeepsFloat32DeflationAtLargeCoordinates: small-coordinate z range";
 }
 
 TEST(PortCollision, CheckSoulBlocksKeepOrdinaryGroundFriction) {

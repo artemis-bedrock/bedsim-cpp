@@ -208,37 +208,9 @@ namespace bedsim::systems {
 			}
 
 			body.setVelocity(velocity);
-			applyBubbleColumns(body);
 			mBlocks.applyInsideBlockEffects(body);
 			body.fallDistance = 0.0f;
 			return true;
-		}
-
-		void applyBubbleColumns(Body& body) const {
-			if constexpr (HasBubbleColumns<W>) {
-				const auto box = mContext.boundingBox(body);
-				const auto minimum = blockAt(box.min);
-				const auto maximum = blockCeiling(box.max);
-				bool found = false;
-				for (int x = minimum.x; x < maximum.x; ++x) {
-					for (int y = minimum.y; y < maximum.y; ++y) {
-						for (int z = minimum.z; z < maximum.z; ++z) {
-							const BlockPos position{ x, y, z };
-							const auto direction = mContext.world().bubbleColumn(position);
-							if (!direction) {
-								continue;
-							}
-
-							found = true;
-							applyBubbleColumn(body, *direction, isBubbleSurface(position));
-						}
-					}
-				}
-
-				if (found) {
-					body.fallDistance = 0.0f;
-				}
-			}
 		}
 
 		[[nodiscard]] HeadLiquid observeHead(const Body& body) const {
@@ -414,17 +386,6 @@ namespace bedsim::systems {
 			}
 
 			return true;
-		}
-
-		[[nodiscard]] bool isBubbleSurface(const BlockPos& position) const {
-			if constexpr (HasBubbleColumnSurface<W>) {
-				if (const auto surface = mContext.world().bubbleColumnSurface(position)) {
-					return *surface;
-				}
-			}
-
-			const auto above = position + faceOffset(Face::Up);
-			return !liquidAt(above) && mContext.isAir(above);
 		}
 
 		const Context<W>& mContext;

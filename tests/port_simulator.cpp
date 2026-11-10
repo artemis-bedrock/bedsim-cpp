@@ -107,7 +107,8 @@ TEST(PortSimulator, CheckInsideCobwebTranslatesBlockVolume) {
 	systems::Systems<FakeWorld> systems{ world, options, scratch };
 	auto body = baseBody();
 	body.position = { static_cast<float>(position.x) + 0.5f, static_cast<float>(position.y), static_cast<float>(position.z) + 0.5f };
-	EXPECT_TRUE(systems.blocks.insideCobweb(body)) << "TestInsideCobwebTranslatesBlockVolume: intersects the translated cobweb block volume away from the origin";
+	systems.blocks.applyInsideBlockEffects(body);
+	EXPECT_TRUE((body.stuckSpeedMultiplier == Vec3{ 0.25f, 0.05f, 0.25f })) << "TestInsideCobwebTranslatesBlockVolume: the translated cobweb queues its slowdown away from the origin";
 }
 
 TEST(PortSimulator, CheckInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes) {
@@ -119,7 +120,8 @@ TEST(PortSimulator, CheckInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes) {
 	systems::Systems<FakeWorld> systems{ world, options, scratch };
 	auto body = baseBody();
 	body.position = { static_cast<float>(position.x) + 0.5f, static_cast<float>(position.y), static_cast<float>(position.z) + 0.5f };
-	EXPECT_TRUE(systems.blocks.insideCobweb(body)) << "TestInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes: a non-collidable cobweb occupies its full block volume";
+	systems.blocks.applyInsideBlockEffects(body);
+	EXPECT_TRUE((body.stuckSpeedMultiplier == Vec3{ 0.25f, 0.05f, 0.25f })) << "TestInsideCobwebUsesFullBlockVolumeWithoutCollisionBoxes: a non-collidable cobweb queues its slowdown";
 }
 
 TEST(PortSimulator, CheckSimulateMoveRelative) {
