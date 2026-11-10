@@ -15,6 +15,7 @@ namespace bedsim {
 	inline constexpr float kSlimeBounce = -1.0f;
 	inline constexpr float kBedBounce = -0.75f;
 	inline constexpr float kClimbSpeed = 0.2f;
+	inline constexpr float kScaffoldingSpeed = 0.15f;
 	inline constexpr float kMaxConsumingImpulse = 0.1225f;
 	inline constexpr float kMaxSneakImpulse = 0.3f;
 	inline constexpr float kUnderwaterMovementSpeed = 0.02f;

@@ -86,6 +86,7 @@ namespace bedsim {
 		bool pressingSneak{};
 		bool pressingAscend{};
 		bool pressingDescend{};
+		bool descendThroughBlock{};
 
 		bool jumping{};
 		bool pressingJump{};

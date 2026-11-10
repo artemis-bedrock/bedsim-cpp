@@ -19,6 +19,15 @@ namespace bedsim {
 		Vec3 penetration{};
 	};
 
+	struct ClimberFlags {
+		bool inScaffolding{};
+		bool overScaffolding{};
+		bool inAscendable{};
+		bool overDescendable{};
+		bool climbable{};
+		bool holdOnSneak{};
+	};
+
 	struct StepResult {
 		AABB box{};
 		Vec3 velocity{};
@@ -80,7 +89,8 @@ namespace bedsim {
 	void queueStuckSpeedMultiplier(Body& body, const Vec3& multiplier);
 	[[nodiscard]] bool applyStuckSpeedMultiplier(Body& body);
 	void applyInsideBlockMovement(Body& body, Inside inside);
-	[[nodiscard]] bool applyAscendableMovement(Body& body, Traversal traversal, bool leatherBoots);
+	[[nodiscard]] bool applyClimbJump(Body& body, const ClimberFlags& flags);
+	void applyLadderTravel(Body& body, const ClimberFlags& flags);
 	[[nodiscard]] bool honeySlideResetsFallDistance(const Body& body, const BlockPos& position);
 	void walkOnBlock(Body& body, const BlockMovement& under);
 	void landOnBlock(Body& body, const Vec3& previousVelocity, const BlockMovement& under);

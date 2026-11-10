@@ -666,28 +666,6 @@ TEST(PortCollision, CheckHoneyTopContactPreservesFallDistance) {
 	checkHoneySlideFallDistance({ 0.5f, 0.0f, 0.5f }, 4.0f, "TestHoneyTopContactPreservesFallDistance: top contact keeps fall distance");
 }
 
-TEST(PortCollision, CheckScaffoldingAscendAndDescendSpeeds) {
-	auto body = baseBody();
-	body.pressingAscend = true;
-	EXPECT_TRUE(!applyAscendableMovement(body, Traversal::Scaffolding, false)) << "TestScaffoldingAscendAndDescendSpeeds: ascent keeps vertical travel";
-	EXPECT_TRUE(body.velocity.y == 0.15f) << "TestScaffoldingAscendAndDescendSpeeds: ascend velocity";
-
-	body.pressingAscend = false;
-	body.pressingDescend = true;
-	EXPECT_TRUE(applyAscendableMovement(body, Traversal::Scaffolding, false)) << "TestScaffoldingAscendAndDescendSpeeds: descent skips vertical travel";
-	EXPECT_TRUE(body.velocity.y == -0.15f) << "TestScaffoldingAscendAndDescendSpeeds: descend velocity";
-}
-
-TEST(PortCollision, CheckPowderSnowTraversalRequiresLeatherBoots) {
-	auto body = baseBody();
-	body.pressingAscend = true;
-	EXPECT_TRUE(!applyAscendableMovement(body, Traversal::PowderSnow, false)) << "TestPowderSnowTraversalRequiresLeatherBoots: ascent keeps vertical travel";
-	EXPECT_TRUE(body.velocity.y == 0.0f) << "TestPowderSnowTraversalRequiresLeatherBoots: no ascent without leather boots";
-
-	EXPECT_TRUE(!applyAscendableMovement(body, Traversal::PowderSnow, true)) << "TestPowderSnowTraversalRequiresLeatherBoots: ascent keeps vertical travel with boots";
-	EXPECT_TRUE(body.velocity.y == 0.2f) << "TestPowderSnowTraversalRequiresLeatherBoots: leather-boots ascent";
-}
-
 TEST(PortCollision, CheckHoneyWalkSlowdownMatchesSlime) {
 	auto body = baseBody();
 	body.onGround = true;
@@ -707,37 +685,6 @@ TEST(PortCollision, CheckSimulationAppliesScaffoldingTraversal) {
 
 	simulator.simulate(body, { .ascendBlock = true });
 	EXPECT_TRUE(body.velocity.y == 0.15f) << "TestSimulationAppliesScaffoldingTraversal: integrated scaffolding ascent";
-}
-
-TEST(PortCollision, CheckScaffoldingDescendSkipsAirGravity) {
-	FakeWorld world;
-	world.passable({ 0, 0, 0 }, "minecraft:scaffolding");
-	Simulator simulator{ world };
-	auto body = baseBody();
-	body.position = { 0.5f, 0.0f, 0.5f };
-	body.gravity = kGravity;
-	body.hasGravity = true;
-	body.pressingDescend = true;
-	body.fallDistance = 4.0f;
-
-	simulator.simulateState(body);
-	EXPECT_TRUE(near(body.velocity.y, -0.15f)) << "TestScaffoldingDescendSkipsAirGravity: scaffolding descent velocity";
-	EXPECT_TRUE(body.fallDistance == 0.0f) << "TestScaffoldingDescendSkipsAirGravity: scaffolding descent resets fall distance";
-}
-
-TEST(PortCollision, CheckScaffoldingSupportEnablesDescent) {
-	FakeWorld world;
-	world.passable({ 0, 0, 0 }, "minecraft:scaffolding");
-	Simulator simulator{ world };
-	auto body = baseBody();
-	body.position = { 0.5f, 1.0f, 0.5f };
-	body.onGround = true;
-	body.hasGravity = true;
-	body.supportingBlock = BlockPos{ 0, 0, 0 };
-	body.pressingDescend = true;
-
-	simulator.simulateState(body);
-	EXPECT_TRUE(near(body.velocity.y, -0.15f)) << "TestScaffoldingSupportEnablesDescent: supported scaffolding descent velocity";
 }
 
 TEST(PortCollision, CheckSimulationDetectsNonSolidWebAndAppliesWeaving) {

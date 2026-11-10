@@ -463,28 +463,37 @@ namespace bedsim {
 		}
 	}
 
-	bool applyAscendableMovement(Body& body, const Traversal traversal, const bool leatherBoots) {
-		auto velocity = body.velocity;
-		if (traversal == Traversal::Scaffolding) {
-			if (body.pressingDescend) {
-				velocity.y = -0.15f;
-				body.setVelocity(velocity);
-				return true;
-			}
+	bool applyClimbJump(Body& body, const ClimberFlags& flags) {
+		if (!body.effectiveJumping && !body.pressingAscend && !body.jumping) {
+			return false;
+		}
 
-			if (body.pressingAscend) {
-				velocity.y = 0.15f;
-			}
-		} else if (traversal == Traversal::PowderSnow) {
-			if (body.pressingDescend) {
-				velocity.y = -0.15f;
-			} else if (body.pressingAscend && leatherBoots) {
-				velocity.y = 0.2f;
-			}
+		auto velocity = body.velocity;
+		if ((flags.inScaffolding || flags.inAscendable) && !body.descendThroughBlock) {
+			velocity.y = kScaffoldingSpeed;
+			body.jumpDelay = kJumpDelayTicks;
+		} else if (flags.climbable) {
+			velocity.y = kClimbSpeed;
+		} else {
+			return false;
 		}
 
 		body.setVelocity(velocity);
-		return false;
+		return true;
+	}
+
+	void applyLadderTravel(Body& body, const ClimberFlags& flags) {
+		if (!flags.climbable) {
+			return;
+		}
+
+		auto velocity = body.velocity;
+		velocity.y = std::max(velocity.y, -kClimbSpeed);
+		if (flags.holdOnSneak && body.sneaking && velocity.y < 0.0f) {
+			velocity.y = 0.0f;
+		}
+
+		body.setVelocity(velocity);
 	}
 
 	bool honeySlideResetsFallDistance(const Body& body, const BlockPos& position) {

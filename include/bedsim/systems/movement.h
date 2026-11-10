@@ -190,6 +190,7 @@ namespace bedsim::systems {
 		}
 
 		[[nodiscard]] bool simulateMovement(Body& body) const {
+			body.descendThroughBlock = false;
 			auto velocity = body.velocity;
 			for (int axis = 0; axis < 3; ++axis) {
 				if (std::abs(velocity[axis]) < 1e-8f) {
@@ -309,28 +310,25 @@ namespace bedsim::systems {
 			mContext.debug("blockUnder={}, blockFriction={}, speed={}", under.air ? "air" : "block", friction, speed);
 			moveRelative(body, speed);
 			mContext.debug("moveRelative force applied (vel={})", body.velocity);
-			if (attemptJump(body)) {
+			const auto climber = mBlocks.climberFlags(body, mContext.wearingLeatherBoots());
+			if (!climber) {
+				return false;
+			}
+
+			body.descendThroughBlock = climber->overDescendable && body.pressingDescend;
+			if (body.descendThroughBlock) {
+				body.setVelocity({ body.velocity.x, -kScaffoldingSpeed, body.velocity.z });
+			}
+
+			if (applyClimbJump(body, *climber)) {
+				mContext.debug("climb jump applied: {}", body.velocity);
+			} else if (attemptJump(body)) {
 				mContext.debug("jump force applied (sprint={}): {}", body.sprinting, body.velocity);
 			}
 
-			const auto inside = mContext.movement(blockAt(body.position));
-			const bool scaffoldDescend = applyAscendableMovement(body, mBlocks.traversal(body, inside), mContext.wearingLeatherBoots());
-
-			const bool nearClimbable = mBlocks.climbableContact(body, inside.climbable);
-			if (nearClimbable) {
-				auto climb = body.velocity;
-				climb.y = std::max(climb.y, -kClimbSpeed);
-				if (body.effectiveJumping || body.collideX || body.collideZ) {
-					climb.y = kClimbSpeed;
-				}
-
-				if (body.sneaking && climb.y < 0.0f) {
-					climb.y = 0.0f;
-				}
-
-				body.setVelocity(climb);
-				mContext.debug("added climb velocity: {} (collided={} effectiveJumping={})", climb, body.collideX || body.collideZ, body.effectiveJumping);
-			}
+			applyLadderTravel(body, *climber);
+			const bool scaffoldDescend = body.descendThroughBlock && (climber->inScaffolding || climber->overScaffolding);
+			const bool resetsFallDistance = body.descendThroughBlock || climber->climbable || climber->inScaffolding || climber->overScaffolding;
 
 			const bool inCobweb = applyCobwebSlowdown(body);
 			const bool stuck = applyStuckSpeedMultiplier(body);
@@ -346,7 +344,7 @@ namespace bedsim::systems {
 			}
 
 			updateFallDistance(body, previousY);
-			if (scaffoldDescend || nearClimbable) {
+			if (resetsFallDistance) {
 				body.fallDistance = 0.0f;
 			}
 
@@ -364,13 +362,18 @@ namespace bedsim::systems {
 			}
 
 			setPostCollisionMotion(body, previousVelocity, previousOnGround, blockUnder);
+			const bool autoClimb = applyAutoClimb(body);
 			if (inCobweb) {
 				mContext.debug("post-move cobweb force applied (0 vel)");
 				body.setVelocity({});
 			}
 
 			auto next = body.velocity;
-			if (!scaffoldDescend) {
+			if (scaffoldDescend) {
+				if (body.hasGravity) {
+					next.y *= kGravityDrag;
+				}
+			} else if (!autoClimb) {
 				if (const auto levitation = mContext.effectAmplifier(Effect::Levitation)) {
 					const float target = kLevitationSpeed * static_cast<float>(*levitation + 1);
 					next.y += (target - next.y) * 0.2f;
@@ -416,6 +419,20 @@ namespace bedsim::systems {
 
 			mBlocks.applyInsideBlockEffects(body);
 			mLiquids.applyBubbleColumns(body);
+			return true;
+		}
+
+		[[nodiscard]] bool applyAutoClimb(Body& body) const {
+			if (!body.collideX && !body.collideZ) {
+				return false;
+			}
+
+			bool holdOnSneak = false;
+			if (!mBlocks.climbableAtFeet(body, mContext.wearingLeatherBoots(), holdOnSneak)) {
+				return false;
+			}
+
+			body.setVelocity({ body.velocity.x, kClimbSpeed, body.velocity.z });
 			return true;
 		}
 

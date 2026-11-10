@@ -17,6 +17,7 @@ namespace bedsim {
 		bool descending{};
 		bool wantDown{};
 		bool leatherBoots{};
+		bool descendThroughBlock{};
 	};
 
 	template <typename T>

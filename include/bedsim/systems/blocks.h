@@ -6,6 +6,8 @@
 #include "bedsim/vec.h"
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 
 namespace bedsim::systems {
 	template <World W>
@@ -46,12 +48,30 @@ namespace bedsim::systems {
 			}
 		}
 
-		[[nodiscard]] Traversal traversal(const Body& body, const BlockMovement& inside) const {
-			if (inside.traversal == Traversal::None && body.supportingBlock && mContext.movement(*body.supportingBlock).traversal == Traversal::Scaffolding) {
-				return Traversal::Scaffolding;
+		[[nodiscard]] std::optional<ClimberFlags> climberFlags(const Body& body, const bool leatherBoots) const {
+			const auto box = mContext.boundingBox(body);
+			const float feetLayer = std::floor(box.min.y);
+			const float overLayer = std::floor(box.min.y + -1.0f);
+			const auto probe = AABB::ordered(
+				{ std::floor(box.min.x), overLayer - 1.0f, std::floor(box.min.z) },
+				{ std::floor(box.max.x) + 1.0f, feetLayer + 1.0f, std::floor(box.max.z) + 1.0f }
+			);
+
+			if (!mContext.areaLoaded(probe)) {
+				return std::nullopt;
 			}
 
-			return inside.traversal;
+			ClimberFlags flags{};
+			climberLayer(box, feetLayer, leatherBoots, flags.inScaffolding, flags.inAscendable);
+			climberLayer(box, overLayer, leatherBoots, flags.overScaffolding, flags.overDescendable);
+			flags.climbable = climbableAtFeet(body, leatherBoots, flags.holdOnSneak);
+			return flags;
+		}
+
+		[[nodiscard]] bool climbableAtFeet(const Body& body, const bool leatherBoots, bool& holdOnSneak) const {
+			const auto inside = mContext.movement(blockAt(body.position));
+			holdOnSneak = climbableContact(body, inside.climbable);
+			return holdOnSneak || (leatherBoots && inside.traversal == Traversal::PowderSnow);
 		}
 
 		[[nodiscard]] BlockMovement blockUnderAfterMove(const Body& body) const {
@@ -81,6 +101,27 @@ namespace bedsim::systems {
 		}
 
 	private:
+		void climberLayer(const AABB& box, const float layer, const bool leatherBoots, bool& scaffolding, bool& ascendable) const {
+			const auto minimum = blockAt({ box.min.x, layer, box.min.z });
+			const auto maximum = blockAt({ box.max.x, layer, box.max.z });
+			for (int x = minimum.x; x <= maximum.x; ++x) {
+				for (int z = minimum.z; z <= maximum.z; ++z) {
+					const BlockPos position{ x, minimum.y, z };
+					const auto traversal = mContext.movement(position).traversal;
+					if (traversal == Traversal::Scaffolding) {
+						scaffolding = true;
+						if (!ascendable) {
+							const auto below = position + faceOffset(Face::Down);
+							const auto liquid = mContext.liquid(below);
+							ascendable = !mContext.isAir(below) && !(liquid && liquid->kind == LiquidKind::Water);
+						}
+					} else if (traversal == Traversal::PowderSnow) {
+						ascendable = ascendable || leatherBoots;
+					}
+				}
+			}
+		}
+
 		void applyHoneyWallSlide(Body& body) const {
 			const auto box = mContext.boundingBox(body).grow({ 1e-3f, 0.0f, 1e-3f });
 			forEachOverlapped(box, [&](const BlockPos& position) {

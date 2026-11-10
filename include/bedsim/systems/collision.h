@@ -29,7 +29,8 @@ namespace bedsim::systems {
 				.sneaking = body.sneaking,
 				.descending = body.pressingDescend,
 				.wantDown = body.wantDown,
-				.leatherBoots = mContext.wearingLeatherBoots()
+				.leatherBoots = mContext.wearingLeatherBoots(),
+				.descendThroughBlock = body.descendThroughBlock
 			};
 		}
 
@@ -73,6 +74,7 @@ namespace bedsim::systems {
 			standing.swimWaterContact = false;
 			standing.swimWaterGraceTicks = 0;
 			standing.pressingDescend = false;
+			standing.descendThroughBlock = false;
 			standing.wantDown = false;
 			const auto box = mContext.boundingBox(standing);
 			if (!mContext.areaLoaded(box)) {
