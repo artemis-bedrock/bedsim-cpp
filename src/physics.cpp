@@ -354,54 +354,65 @@ namespace bedsim {
 		return true;
 	}
 
+	[[nodiscard]] static float wrappedGlideAngle(const float previous, const float current) {
+		float delta = std::fmod(current - previous + 180.0f, 360.0f);
+		if (delta < 0.0f) {
+			delta += 360.0f;
+		}
+
+		return delta + -180.0f + previous;
+	}
+
 	void simulateGlide(Body& body) {
 		if (body.velocity.y > kGlideFallDistanceVelocity) {
 			body.fallDistance = 1.0f;
 		}
 
-		constexpr float radians = kPi / 180.0f;
-		const float yaw = body.rotation.z * radians;
-		const float pitch = body.rotation.x * radians;
-		const float yawCos = mcCos(-yaw - kPi);
-		const float yawSin = mcSin(-yaw - kPi);
-		const float pitchCos = mcCos(pitch);
-		const float pitchSin = mcSin(pitch);
+		constexpr auto radians = static_cast<float>(std::numbers::pi / 180.0);
+		const float yaw = wrappedGlideAngle(body.lastRotation.z, body.rotation.z);
+		const float lookPitch = wrappedGlideAngle(body.lastRotation.x, body.rotation.x) * -radians;
+		const float yawAngle = (yaw * -radians) - kPi;
+		const float lookPitchCos = mcCos(lookPitch);
+		const float lookX = mcSin(yawAngle) * -lookPitchCos;
+		const float lookY = mcSin(lookPitch);
+		const float lookZ = mcCos(yawAngle) * -lookPitchCos;
 
-		const float lookX = yawSin * -pitchCos;
-		const float lookY = -pitchSin;
-		const float lookZ = yawCos * -pitchCos;
+		const float pitch = body.rotation.x * radians;
+		const float pitchCos = mcCos(pitch);
+		const float lookHorizontalSquared = lookX * lookX + lookZ * lookZ;
+		const float lookLength = std::sqrt(lookY * lookY + lookX * lookX + lookZ * lookZ);
+		const float pitchCosSquared = std::min(lookLength / 0.4f, 1.0f) * pitchCos * pitchCos;
 
 		auto velocity = body.velocity;
 		const float horizontalSpeed = std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-		const float lookHorizontal = pitchCos;
-		const float pitchCosSquared = pitchCos * pitchCos;
+		const float lookHorizontal = std::sqrt(lookHorizontalSquared);
 
 		const float gravity = body.slowFalling ? kSlowFallingGravity : body.gravity;
-		velocity.y += -gravity + pitchCosSquared * (gravity * 0.75f);
-		if (velocity.y < 0.0f && lookHorizontal > kGlideLookEpsilon) {
-			const float lift = velocity.y * -0.1f * pitchCosSquared;
+		velocity.y -= ((0.75f * pitchCosSquared) - 1.0f) * -gravity;
+		if (lookHorizontalSquared > 0.0f && velocity.y < 0.0f) {
+			const float lift = pitchCosSquared * -0.1f * velocity.y;
+			velocity.x += (lookX * lift) / lookHorizontal;
 			velocity.y += lift;
-			velocity.x += lookX * lift / lookHorizontal;
-			velocity.z += lookZ * lift / lookHorizontal;
+			velocity.z += (lookZ * lift) / lookHorizontal;
 		}
 
-		if (pitch < 0.0f && lookHorizontal > kGlideLookEpsilon) {
-			const float climb = horizontalSpeed * -pitchSin * 0.04f;
-			velocity.y += climb * 3.2f;
-			velocity.x -= lookX * climb / lookHorizontal;
-			velocity.z -= lookZ * climb / lookHorizontal;
+		if (pitch < 0.0f) {
+			const float climb = mcSin(pitch) * horizontalSpeed * -0.04f;
+			velocity.x -= (climb * lookX) / lookHorizontal;
+			velocity.y += 3.2f * climb;
+			velocity.z -= (climb * lookZ) / lookHorizontal;
 		}
 
-		if (lookHorizontal > kGlideLookEpsilon) {
-			velocity.x += (lookX / lookHorizontal * horizontalSpeed - velocity.x) * 0.1f;
-			velocity.z += (lookZ / lookHorizontal * horizontalSpeed - velocity.z) * 0.1f;
+		if (lookHorizontalSquared > 0.0f) {
+			velocity.x += ((lookX / lookHorizontal * horizontalSpeed) - velocity.x) * 0.1f;
+			velocity.z += ((lookZ / lookHorizontal * horizontalSpeed) - velocity.z) * 0.1f;
 		}
 
 		const int rockets = body.attachedRockets > 0 ? body.attachedRockets : (body.glideBoostTicks > 0 ? 1 : 0);
 		for (int rocket = 0; rocket < rockets; ++rocket) {
-			velocity.x += (lookX * 0.1f) + (((lookX * 1.5f) - velocity.x) * 0.5f);
-			velocity.y += (lookY * 0.1f) + (((lookY * 1.5f) - velocity.y) * 0.5f);
-			velocity.z += (lookZ * 0.1f) + (((lookZ * 1.5f) - velocity.z) * 0.5f);
+			velocity.x = velocity.x + (((1.5f * lookX) - velocity.x) * 0.5f) + (lookX * 0.1f);
+			velocity.y = velocity.y + (((lookY * 1.5f) - velocity.y) * 0.5f) + (lookY * 0.1f);
+			velocity.z = velocity.z + (((1.5f * lookZ) - velocity.z) * 0.5f) + (lookZ * 0.1f);
 		}
 
 		velocity.x *= 0.99f;
@@ -653,6 +664,22 @@ namespace bedsim {
 
 	int liquidDecay(const Liquid& liquid) {
 		return liquid.falling ? 0 : 8 - liquid.depth;
+	}
+
+	WaterTravelSpeed waterTravelSpeed(const float base, const float groundSpeed, float depthStrider, const float swimMultiplier, const bool onGround) {
+		if (swimMultiplier > 1.0f) {
+			return { .speed = (base * swimMultiplier) * (depthStrider / 3.0f * 0.3f + 0.7f), .depthStrider = depthStrider };
+		}
+
+		if (depthStrider <= 0.0f) {
+			return { .speed = base, .depthStrider = depthStrider };
+		}
+
+		if (!onGround) {
+			depthStrider *= 0.5f;
+		}
+
+		return { .speed = base + ((groundSpeed - base) * depthStrider) / 3.0f, .depthStrider = depthStrider };
 	}
 
 	float liquidGravity(const bool swimming, const bool water) {

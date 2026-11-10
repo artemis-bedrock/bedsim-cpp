@@ -6,7 +6,9 @@
 #include "bedsim/simulator.h"
 
 #include <array>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstddef>
 #include <cstring>
 #include <format>
@@ -602,5 +604,118 @@ TEST(PortFeatures, CheckFiniteMovementStateRejectsEveryFloatField) {
 		auto body = base;
 		poison(body);
 		EXPECT_TRUE(!isFinite(body)) << std::format("TestFiniteMovementStateRejectsEveryFloatField/Body.{}: NaN is rejected", name);
+	}
+}
+
+TEST(PortFeatures, CheckRawMovementSlowdownRoundsPoseThenItem) {
+	struct Case {
+		std::string_view name;
+		Input input;
+		uint32_t want;
+	};
+
+	const std::array cases{
+		Case{ "consuming", { .usingConsumable = true }, 0x3d96872b },
+		Case{ "consuming sneak", { .sneakDown = true, .usingConsumable = true }, 0x3cb4a234 }
+	};
+
+	const FakeWorld world;
+	for (const auto& [name, caseInput, want] : cases) {
+		auto body = baseBody();
+		Simulator simulator{ world };
+		auto input = caseInput;
+		input.moveVector = { 0.0f, 0.6f };
+		input.moveVectorIsRaw = true;
+		const auto result = simulator.simulate(body, input);
+		const auto got = std::bit_cast<uint32_t>(result.inputMoveVector.y);
+		EXPECT_TRUE(got == want) << std::format("TestRawMovementSlowdownRoundsPoseThenItem/{}: forward {:#010x} want {:#010x}", name, got, want);
+	}
+}
+
+TEST(PortFeatures, CheckRawMovementNormalisesOntoUnitCircle) {
+	const FakeWorld world;
+	auto body = baseBody();
+	Simulator simulator{ world };
+	const auto result = simulator.simulate(body, { .moveVector = { 1.0f, 1.0f }, .moveVectorIsRaw = true });
+	const auto want = static_cast<float>(1.0 / std::sqrt(2.0));
+	EXPECT_TRUE(result.inputMoveVector == (Vec2{ want, want })) << std::format("TestRawMovementNormalisesOntoUnitCircle: diagonal raw input {} want {} on both axes", result.inputMoveVector, want);
+}
+
+TEST(PortFeatures, CheckSneakSlowdownFollowsVanillaGate) {
+	struct Case {
+		std::string_view name;
+		bool gliding{};
+		bool swimming{};
+		bool inWater{};
+		Input input;
+		float want;
+	};
+
+	const std::array cases{
+		Case{ .name = "held descend", .input = { .descendBlock = true }, .want = kMaxSneakImpulse },
+		Case{ .name = "gliding", .gliding = true, .input = {}, .want = 1.0f },
+		Case{ .name = "gliding held sneak", .gliding = true, .input = { .sneakDown = true }, .want = kMaxSneakImpulse },
+		Case{ .name = "gliding held descend", .gliding = true, .input = { .descendBlock = true }, .want = kMaxSneakImpulse },
+		Case{ .name = "swimming", .swimming = true, .input = { .sneakDown = true }, .want = 1.0f },
+		Case{ .name = "in water", .inWater = true, .input = { .sneakDown = true }, .want = 1.0f }
+	};
+
+	const FakeWorld world;
+	for (const auto& testCase : cases) {
+		auto body = baseBody();
+		body.gliding = testCase.gliding;
+		body.swimming = testCase.swimming;
+		body.swimWaterContact = testCase.inWater;
+		auto input = testCase.input;
+		input.moveVector = { 0.0f, 1.0f };
+		input.moveVectorIsRaw = true;
+		applyInput(world, body, input);
+		EXPECT_TRUE(body.impulse.y == testCase.want * 0.98f) << std::format("TestSneakSlowdownFollowsVanillaGate/{}: impulse {} want {}", testCase.name, body.impulse.y, testCase.want * 0.98f);
+	}
+}
+
+TEST(PortFeatures, CheckDepthStriderWaterSpeedDividesLast) {
+	auto travel = waterTravelSpeed(0.02f, 0.1f, 2.0f, 1.0f, true);
+	EXPECT_TRUE(std::bit_cast<uint32_t>(travel.speed) == 0x3d962fc9 && travel.depthStrider == 2.0f) << std::format("TestDepthStriderWaterSpeedDividesLast: speed {:#010x} level {}", std::bit_cast<uint32_t>(travel.speed), travel.depthStrider);
+
+	constexpr float base = 0.02f;
+	constexpr float ground = 0.1f;
+	travel = waterTravelSpeed(base, ground, 2.0f, 1.0f, false);
+	EXPECT_TRUE(travel.speed == base + (ground - base) / 3.0f && travel.depthStrider == 1.0f) << std::format("TestDepthStriderWaterSpeedDividesLast: airborne speed {} level {}", travel.speed, travel.depthStrider);
+
+	travel = waterTravelSpeed(0.02f, 0.1f, 3.0f, 2.0f, false);
+	EXPECT_TRUE(travel.speed == 0.04f && travel.depthStrider == 3.0f) << std::format("TestDepthStriderWaterSpeedDividesLast: dolphin speed {} level {}", travel.speed, travel.depthStrider);
+}
+
+TEST(PortFeatures, CheckGlideMatchesVanillaFloat32) {
+	struct Case {
+		Vec2 rotation;
+		Vec2 previous;
+		Vec3 velocity;
+		bool slowFalling{};
+		bool boost{};
+		std::array<uint32_t, 3> want;
+	};
+
+	const std::array cases{
+		Case{ { -12.5f, 37.25f }, { -11.75f, 33.5f }, { 0.31f, -0.42f, 0.87f }, false, false, { 0x3e4f460d, 0xbebc2c28, 0x3f5f49a6 } },
+		Case{ { 24.0f, -170.0f }, { 22.0f, 175.0f }, { -0.6f, -0.9f, 0.2f }, true, false, { 0xbf031693, 0xbf4fcee8, 0x3d4e41e4 } },
+		Case{ { -35.0f, 91.3f }, { -35.0f, 91.3f }, { 1.1f, 0.05f, -0.3f }, false, true, { 0xbe79be45, 0x3f061758, 0xbe19dd88 } },
+		Case{ { -90.0f, 0.0f }, { -90.0f, 0.0f }, { 0.5f, 0.0f, 0.0f }, false, false, { 0x3ee41893, 0xbc807356, 0x3d01c2e3 } }
+	};
+
+	for (const auto& testCase : cases) {
+		auto body = baseBody();
+		body.gravity = kGravity;
+		body.rotation = { testCase.rotation.x, testCase.rotation.y, testCase.rotation.y };
+		body.lastRotation = { testCase.previous.x, testCase.previous.y, testCase.previous.y };
+		body.velocity = testCase.velocity;
+		body.slowFalling = testCase.slowFalling;
+		body.glideBoostTicks = testCase.boost ? 1 : 0;
+		simulateGlide(body);
+		for (int axis = 0; axis < 3; ++axis) {
+			const auto got = std::bit_cast<uint32_t>(body.velocity[axis]);
+			EXPECT_TRUE(got == testCase.want[static_cast<size_t>(axis)]) << std::format("TestGlideMatchesVanillaFloat32: rotation {} previous {} axis {} = {:#010x} want {:#010x}", testCase.rotation, testCase.previous, axis, got, testCase.want[static_cast<size_t>(axis)]);
+		}
 	}
 }

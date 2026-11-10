@@ -28,6 +28,11 @@ namespace bedsim {
 		bool holdOnSneak{};
 	};
 
+	struct WaterTravelSpeed {
+		float speed{};
+		float depthStrider{};
+	};
+
 	struct StepResult {
 		AABB box{};
 		Vec3 velocity{};
@@ -104,6 +109,7 @@ namespace bedsim {
 	[[nodiscard]] float liquidHeight(const Liquid& liquid);
 	[[nodiscard]] int liquidDecay(const Liquid& liquid);
 	[[nodiscard]] float liquidGravity(bool swimming, bool water);
+	[[nodiscard]] WaterTravelSpeed waterTravelSpeed(float base, float groundSpeed, float depthStrider, float swimMultiplier, bool onGround);
 	[[nodiscard]] bool liquidIntersects(const AABB& box, const BlockPos& position, const Liquid& liquid);
 	[[nodiscard]] AABB shrinkLiquidBox(const AABB& box, const Vec3& offset);
 	void applyBubbleColumn(Body& body, BubbleDirection direction, bool surface);

@@ -10,6 +10,7 @@
 #include "bedsim/vec.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace bedsim::systems {
 	struct AppliedInput {
@@ -217,32 +218,45 @@ namespace bedsim::systems {
 			}
 		}
 
-		[[nodiscard]] Vec2 processMove(Body& body, const Input& input, const bool upstreamImpulseClamping) const {
-			float maxImpulse = 1.0f;
-			if (input.moveVectorIsRaw || !upstreamImpulseClamping) {
-				if (input.itemUseMovementModifier) {
-					maxImpulse *= *input.itemUseMovementModifier;
-				} else if (input.usingConsumable || (input.usingItem && !input.usingSpear)) {
-					maxImpulse *= kMaxConsumingImpulse;
-				}
-
-				const bool sneakSlowdown = body.sneaking && !body.swimWaterContact;
-				if (sneakSlowdown || body.crawling || body.gliding) {
-					++body.ticksSinceCanSlowdown;
-					float sneakImpulse = kMaxSneakImpulse;
-					if (body.ticksSinceCanSlowdown > 2 && mContext.hasEquipment()) {
-						sneakImpulse += 0.15f * static_cast<float>(mContext.enchantmentLevel(Enchantment::SwiftSneak));
-					}
-
-					maxImpulse *= std::clamp(sneakImpulse, 0.0f, 1.0f);
-				} else {
-					body.ticksSinceCanSlowdown = 0;
-				}
+		[[nodiscard]] float sneakMovementModifier(Body& body, const Input& input) const {
+			const bool slowed = body.sneaking || body.crawling || input.sneakDown || input.descendBlock;
+			if (!slowed || body.swimming || body.flying || body.swimWaterContact) {
+				body.ticksSinceCanSlowdown = 0;
+				return 1.0f;
 			}
 
+			++body.ticksSinceCanSlowdown;
+			float multiplier = kMaxSneakImpulse;
+			if ((body.sneaking || body.crawling) && body.ticksSinceCanSlowdown > 2 && mContext.hasEquipment()) {
+				multiplier = static_cast<float>(mContext.enchantmentLevel(Enchantment::SwiftSneak)) * 0.15f + kMaxSneakImpulse;
+			}
+
+			return std::clamp(multiplier, 0.0f, 1.0f);
+		}
+
+		[[nodiscard]] Vec2 processMove(Body& body, const Input& input, const bool upstreamImpulseClamping) const {
+			float itemModifier = 1.0f;
+			float poseModifier = 1.0f;
+			if (input.moveVectorIsRaw || !upstreamImpulseClamping) {
+				if (input.itemUseMovementModifier) {
+					itemModifier = *input.itemUseMovementModifier;
+				} else if (input.usingConsumable || (input.usingItem && !input.usingSpear)) {
+					itemModifier = kMaxConsumingImpulse;
+				}
+
+				poseModifier = sneakMovementModifier(body, input);
+			}
+
+			const float maxImpulse = poseModifier * itemModifier;
 			Vec2 move = clamp(input.moveVector, Vec2{ -maxImpulse }, Vec2{ maxImpulse });
 			if (input.moveVectorIsRaw) {
-				move = clamp(input.moveVector, Vec2{ -1.0f }, Vec2{ 1.0f }) * maxImpulse;
+				Vec2 raw = input.moveVector;
+				if (const float lengthSquared = raw.y * raw.y + raw.x * raw.x; lengthSquared > 1.0f) {
+					const float magnitude = std::sqrt(lengthSquared);
+					raw = { raw.x / magnitude, raw.y / magnitude };
+				}
+
+				move = { raw.x * poseModifier * itemModifier, raw.y * poseModifier * itemModifier };
 			}
 
 			if (input.inventoryAction) {

@@ -140,16 +140,9 @@ namespace bedsim::systems {
 				}
 
 				depthStrider = std::min(std::max(static_cast<float>(mContext.enchantmentLevel(Enchantment::DepthStrider)), 0.0f), 3.0f);
-				const float depthStriderFraction = depthStrider / 3.0f;
-				if (swimSpeedMultiplier > 1.0f) {
-					speed *= (0.7f + depthStriderFraction * 0.3f) * swimSpeedMultiplier;
-				} else {
-					if (!body.onGround) {
-						depthStrider *= 0.5f;
-					}
-
-					speed += (body.movementSpeed - speed) * (depthStrider / 3.0f);
-				}
+				const auto travelSpeed = waterTravelSpeed(speed, body.movementSpeed, depthStrider, swimSpeedMultiplier, body.onGround);
+				speed = travelSpeed.speed;
+				depthStrider = travelSpeed.depthStrider;
 			}
 
 			moveRelative(body, speed);
