@@ -11,7 +11,8 @@ struct std::formatter<bedsim::Vec2> {
 		return context.begin();
 	}
 
-	auto format(const bedsim::Vec2& value, std::format_context& context) const {
+	template <typename FormatContext>
+	auto format(const bedsim::Vec2& value, FormatContext& context) const {
 		return std::format_to(context.out(), "[{} {}]", value.x, value.y);
 	}
 };
@@ -22,7 +23,8 @@ struct std::formatter<bedsim::Vector3<T>> {
 		return context.begin();
 	}
 
-	auto format(const bedsim::Vector3<T>& value, std::format_context& context) const {
+	template <typename FormatContext>
+	auto format(const bedsim::Vector3<T>& value, FormatContext& context) const {
 		return std::format_to(context.out(), "[{} {} {}]", value.x, value.y, value.z);
 	}
 };
@@ -33,7 +35,8 @@ struct std::formatter<bedsim::AABB> {
 		return context.begin();
 	}
 
-	auto format(const bedsim::AABB& value, std::format_context& context) const {
+	template <typename FormatContext>
+	auto format(const bedsim::AABB& value, FormatContext& context) const {
 		return std::format_to(context.out(), "{{{} {}}}", value.min, value.max);
 	}
 };
